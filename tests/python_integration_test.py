@@ -24,7 +24,7 @@ lib = ctypes.CDLL(lib_path)
 img_path = os.path.join(os.path.dirname(__file__), "test_image.bmp")
 img = Image.open(img_path)
 pixels = img.tobytes()
-print("Pixel bytes:", pixels)
+print("Pixel bytes:", bytearray(pixels).hex(sep=" ").upper())
 
 result = lib.encode(pixels, len(pixels))
 assert result == 127, f"Expected 127, got {result}"
