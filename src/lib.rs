@@ -21,11 +21,12 @@ pub struct EncodeResult {
 #[unsafe(no_mangle)]
 pub extern "C" fn encode(
     data: *const u8,
-    width: usize,
-    height: usize,
-    channels: usize,
+    width: u32,
+    height: u32,
+    channels: u8,
+    colorspace: u8,
 ) -> EncodeResult {
-    let error = check_for_invalid_input(data, width, height, channels);
+    let error = check_for_invalid_input(data, width, height, channels, colorspace);
     if error != EncodeError::None {
         return return_error(error as u8);
     }
@@ -35,7 +36,7 @@ pub extern "C" fn encode(
     // let slice = unsafe { std::slice::from_raw_parts(data, len) };
 
     // Create the output header and start the output vector
-    let mut out = get_header(width as u32, height as u32, channels as u8, 0);
+    let mut out = get_header(width, height, channels, colorspace);
 
     // Encode the data into the output vector
     let out_len = out.len();
@@ -50,17 +51,21 @@ pub extern "C" fn encode(
 
 fn check_for_invalid_input(
     data: *const u8,
-    width: usize,
-    height: usize,
-    channels: usize,
+    width: u32,
+    height: u32,
+    channels: u8,
+    colorspace: u8,
 ) -> EncodeError {
     if data.is_null() {
         return EncodeError::NullData;
     }
-    if width <= 0 || height <= 0 {
+    if width == 0 || height == 0 {
         return EncodeError::InvalidDimensions;
     }
     if channels < 3 || channels > 4 {
+        return EncodeError::InvalidChannels;
+    }
+    if colorspace > 1 {
         return EncodeError::InvalidChannels;
     }
     EncodeError::None
@@ -104,7 +109,7 @@ mod tests {
             0x00, 0x00, 0x00,   0xFF, 0x00, 0x00,
             0xFF, 0xFF, 0x00,   0xFF, 0xFF, 0xFF,
         ];
-        let result = encode(bytes.as_ptr(), 2, 2, 3);
+        let result = encode(bytes.as_ptr(), 2, 2, 3, 0);
         assert!(!result.ptr.is_null());
         assert!(result.len > 0);
         assert_eq!(result.error, 0);

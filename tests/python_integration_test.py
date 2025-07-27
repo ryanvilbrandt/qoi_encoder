@@ -29,9 +29,10 @@ class EncodeResult(ctypes.Structure):
 
 lib.encode.argtypes = [
     ctypes.c_void_p,  # data
-    ctypes.c_size_t,  # width
-    ctypes.c_size_t,  # height
-    ctypes.c_size_t,   # channels
+    ctypes.c_uint32,  # width
+    ctypes.c_uint32,  # height
+    ctypes.c_uint8,   # channels (3 for RGB, 4 for RGBA)
+    ctypes.c_uint8,   # colorspace (0 for sRGB, 1 for linear)
 ]
 lib.encode.restype = EncodeResult
 
@@ -44,6 +45,7 @@ img = Image.open(img_path)
 pixels = img.tobytes()
 width, height = img.size
 channels = len(img.getbands())
+colorspace = 0  # Assuming sRGB colorspace, as the other option is rarely used
 print("Pixel bytes:", bytearray(pixels).hex(" ").upper())
 
 result = lib.encode(
@@ -51,6 +53,7 @@ result = lib.encode(
     width,
     height,
     channels,
+    colorspace,
 )
 if result.error != 0 or not result.ptr or result.len <= 0:
     raise RuntimeError(f"Encoding failed, error code: {result.error}")
