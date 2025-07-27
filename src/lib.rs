@@ -80,21 +80,23 @@ fn encode_image_data(
     colorspace: u8,
 ) -> Vec<u8> {
     let mut out = get_header(width, height, channels, colorspace);
+    let pixel_size = channels as usize;
     let mut index_array: [Vec<u8>; 64] = std::array::from_fn(|_| Vec::new());
-    let mut last_pixel: Vec<u8> = Vec::new();
+
+    // The first pixel must be encoded fully. Do that outside the loop.
+    let pixel = data[0..pixel_size].to_vec();
+    let index = get_pixel_index(&pixel);
+    add_pixel(&mut out, &pixel);
+    add_to_index(&mut index_array, index, &pixel);
+    let mut last_pixel = pixel;
     let mut run_length: u8 = 0;
 
-    for chunk in data.chunks_exact(channels as usize) {
+    // Now process the rest of the pixels
+    for chunk in data[pixel_size..].chunks_exact(pixel_size) {
         let pixel = chunk.to_vec();
         let index: usize = get_pixel_index(&pixel);
         println!("{:?}", pixel);
-        // Initial check for when last_pixel is empty
-        if last_pixel.is_empty() {
-            add_pixel(&mut out, &pixel);
-            add_to_index(&mut index_array, index, &pixel);
-            last_pixel = pixel;
-            continue;
-        }
+
         // Encode a run
         if last_pixel == pixel {
             run_length += 1;
@@ -120,7 +122,18 @@ fn encode_image_data(
             add_pixel(&mut out, &pixel);
         }
         add_to_index(&mut index_array, index, &pixel);
+        last_pixel = pixel;
     }
+
+    // Encode any lingering runs
+    if run_length > 0 {
+        add_run(&mut out, run_length);
+    }
+
+    // Write end bytes
+    let end_bytes: [u8; 8] = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01];
+    out.extend_from_slice(&end_bytes);
+
     return out;
 }
 
@@ -237,6 +250,21 @@ mod tests {
         assert!(!result.ptr.is_null());
         assert!(result.len > 0);
         assert_eq!(result.error, 0);
+
+        // Check the data in the pointer
+        let data = unsafe { std::slice::from_raw_parts(result.ptr, result.len) };
+        // The header should start with "qoif"
+        assert_eq!(&data[0..4], b"qoif");
+        // The width and height should match (big endian)
+        assert_eq!(u32::from_be_bytes([data[4], data[5], data[6], data[7]]), 2);
+        assert_eq!(u32::from_be_bytes([data[8], data[9], data[10], data[11]]), 2);
+        // Channels and colorspace
+        assert_eq!(data[12], 3);
+        assert_eq!(data[13], 0);
+
+        let expected_bytes = [254, 0, 0, 0, 122, 126, 127];
+        assert_eq!(data[14..], expected_bytes);
+
         free_encoded(result.ptr, result.len);
     }
 }
