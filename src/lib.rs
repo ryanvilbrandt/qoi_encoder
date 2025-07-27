@@ -84,8 +84,9 @@ fn encode_image_data(
     let mut index_array: [Vec<u8>; 64] = std::array::from_fn(|_| Vec::new());
 
     // The first pixel must be encoded fully. Do that outside the loop.
-    let pixel = data[0..pixel_size].to_vec();
-    let index = get_pixel_index(&pixel);
+    let mut pixel = data[0..pixel_size].to_vec();
+    println!("{:?}", pixel);
+    let mut index = get_pixel_index(&pixel);
     add_pixel(&mut out, &pixel);
     add_to_index(&mut index_array, index, &pixel);
     let mut last_pixel = pixel;
@@ -93,8 +94,9 @@ fn encode_image_data(
 
     // Now process the rest of the pixels
     for chunk in data[pixel_size..].chunks_exact(pixel_size) {
-        let pixel = chunk.to_vec();
-        let index: usize = get_pixel_index(&pixel);
+        pixel = chunk.to_vec();
+        index = get_pixel_index(&pixel);
+
         println!("{:?}", pixel);
 
         // Encode a run
@@ -118,7 +120,7 @@ fn encode_image_data(
             continue;
         }
         // Encode diff
-        if !encode_diff(&mut out, &last_pixel, &pixel) {
+        if !encode_diff(&mut out, &pixel, &last_pixel) {
             add_pixel(&mut out, &pixel);
         }
         add_to_index(&mut index_array, index, &pixel);
@@ -132,6 +134,7 @@ fn encode_image_data(
 
     // Write end bytes
     let end_bytes: [u8; 8] = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01];
+    println!("End bytes");
     out.extend_from_slice(&end_bytes);
 
     return out;
@@ -165,18 +168,27 @@ fn add_to_index(index_array: &mut [Vec<u8>; 64], index: usize, pixel: &Vec<u8>) 
 
 fn add_pixel(out: &mut Vec<u8>, pixel: &Vec<u8>) {
     if pixel.len() == 3 {
+        print!("{:08b} ", 0b1111_1110);
         out.push(0b1111_1110); // RGB
     } else {
+        print!("{:08b} ", 0b1111_1111);
         out.push(0b1111_1111); // RGBA
     }
+    // Print every value in pixel in binary
+    for value in pixel {
+        print!("{:08b} ", value);
+    }
+    println!();
     out.extend_from_slice(&pixel);
 }
 
 fn add_run(out: &mut Vec<u8>, run_length: u8) {
+    println!("{:08b}", 0b1100_0000 | run_length);
     out.push(0b1100_0000 | run_length);
 }
 
 fn add_index(out: &mut Vec<u8>, index: usize) {
+    println!("{:08b}", index);
     out.push(index as u8);
 }
 
@@ -197,6 +209,10 @@ fn encode_diff(out: &mut Vec<u8>, pixel: &Vec<u8>, last_pixel: &Vec<u8>) -> bool
             | (((dr.wrapping_add(2)) & 0x03) << 4)
             | (((dg.wrapping_add(2)) & 0x03) << 2)
             | ((db.wrapping_add(2)) & 0x03);
+        dbg!(dr.wrapping_add(2));
+        dbg!(dg.wrapping_add(2));
+        dbg!(db.wrapping_add(2));
+        println!("{:08b}", byte);
         out.push(byte);
         return true;
     }
@@ -210,8 +226,11 @@ fn encode_diff(out: &mut Vec<u8>, pixel: &Vec<u8>, last_pixel: &Vec<u8>) -> bool
     let luma = |v: u8| v >= 224 || v <= 31;
     let luma_small = |v: u8| v >= 248 || v <= 7;
     if luma(dg) && luma_small(dr_dg) && luma_small(db_dg) {
-        out.push(0b1000_0000 | (dg.wrapping_add(32) & 0x3F));
-        out.push(((dr_dg.wrapping_add(8) & 0x0F) << 4) | (db_dg.wrapping_add(8) & 0x0F));
+        let byte1 = 0b1000_0000 | (dg.wrapping_add(32) & 0x3F);
+        let byte2 = ((dr_dg.wrapping_add(8) & 0x0F) << 4) | (db_dg.wrapping_add(8) & 0x0F);
+        println!("{:08b} {:08b}", byte1, byte2);
+        out.push(byte1);
+        out.push(byte2);
         return true;
     }
 
@@ -262,7 +281,7 @@ mod tests {
         assert_eq!(data[12], 3);
         assert_eq!(data[13], 0);
 
-        let expected_bytes = [254, 0, 0, 0, 122, 126, 127];
+        let expected_bytes = [254, 0, 0, 0, 90, 102, 105, 0, 0, 0, 0, 0, 0, 0, 1];
         assert_eq!(data[14..], expected_bytes);
 
         free_encoded(result.ptr, result.len);
